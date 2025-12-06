@@ -55,7 +55,9 @@
       "Skill(advanced-tables-components)",
       "Bash(if not exist \"D:\\JKKN\\JKKN-Dental-College\\components\\data-table\" mkdir \"D:\\JKKN\\JKKN-Dental-College\\components\\data-table\")",
       "Bash(if not exist \"D:\\JKKN\\JKKN-Dental-College\\lib\\table\" mkdir \"D:\\JKKN\\JKKN-Dental-College\\lib\\table\")",
-      "mcp__supabase__get_logs"
+      "mcp__supabase__get_logs",
+      "WebFetch(domain:vercel.link)",
+      "WebFetch(domain:vercel.com)"
     ],
     "deny": [],
     "ask": []
