@@ -54,13 +54,59 @@ export async function createActivity(
 ): Promise<FormState> {
   console.log('========================================')
   console.log('[createActivity] Server action called')
+  console.log('[createActivity] Environment:', process.env.NODE_ENV)
+  console.log('[createActivity] Timestamp:', new Date().toISOString())
   console.log('========================================')
 
   try {
     console.log('[createActivity] Step 1: Getting authenticated user...')
-    // Get authenticated user
-    const user = await getCurrentUser()
-    console.log('[createActivity] User authenticated:', user.id)
+
+    // Enhanced debugging for production
+    const supabaseForAuth = await createClient()
+
+    // First, check if we have a session at all
+    const { data: sessionData, error: sessionError } = await supabaseForAuth.auth.getSession()
+    console.log('[createActivity] Session check:', {
+      hasSession: !!sessionData?.session,
+      sessionError: sessionError?.message || null,
+      accessTokenExists: !!sessionData?.session?.access_token,
+      userId: sessionData?.session?.user?.id || 'NO_USER_IN_SESSION',
+      userEmail: sessionData?.session?.user?.email || 'NO_EMAIL',
+    })
+
+    if (sessionError) {
+      console.error('[createActivity] Session error:', sessionError)
+    }
+
+    // Now get the user
+    const { data: { user }, error: userError } = await supabaseForAuth.auth.getUser()
+
+    console.log('[createActivity] getUser result:', {
+      hasUser: !!user,
+      userError: userError?.message || null,
+      userId: user?.id || 'NO_USER',
+      userEmail: user?.email || 'NO_EMAIL',
+    })
+
+    if (userError) {
+      console.error('[createActivity] CRITICAL: Auth error in production!')
+      console.error('[createActivity] Error details:', userError)
+      return {
+        success: false,
+        message: `Authentication failed: ${userError.message}. Please try logging out and back in.`,
+      }
+    }
+
+    if (!user) {
+      console.error('[createActivity] CRITICAL: No user found despite no error!')
+      console.error('[createActivity] This indicates a session/cookie issue in production')
+      return {
+        success: false,
+        message: 'Session expired. Please refresh the page and try again.',
+      }
+    }
+
+    console.log('[createActivity] User authenticated:', user.id, user.email)
 
     console.log('[createActivity] Step 2: Parsing form data...')
     // Log all form data entries
@@ -174,7 +220,27 @@ export async function createActivity(
       category: finalData.category,
     })
 
+    // Verify user has permission before insert (debugging)
+    console.log('[createActivity] Verifying RLS permission for user:', user.id)
+    const { data: permCheck } = await supabase.rpc('check_activity_permission', {
+      user_id: user.id,
+      permission_name: 'create'
+    })
+    console.log('[createActivity] RLS permission check result:', permCheck)
+
+    if (permCheck === false) {
+      console.error('[createActivity] CRITICAL: User does not have create permission!')
+      console.error('[createActivity] This is an RLS policy issue. User ID:', user.id)
+      console.error('[createActivity] Profile role_type:', profile?.role_type)
+      console.error('[createActivity] Profile role_id:', profile?.role_id)
+      return {
+        success: false,
+        message: 'You do not have permission to create activities. Please contact your administrator.',
+      }
+    }
+
     // Insert main activity
+    console.log('[createActivity] Proceeding with INSERT...')
     const { data: activity, error: activityError } = await supabase
       .from('activities')
       .insert([
@@ -204,10 +270,24 @@ export async function createActivity(
       .single()
 
     if (activityError) {
-      console.error('[createActivity] Database error:', activityError)
+      console.error('[createActivity] =============================================')
+      console.error('[createActivity] DATABASE INSERT FAILED!')
+      console.error('[createActivity] Error message:', activityError.message)
       console.error('[createActivity] Error code:', activityError.code)
       console.error('[createActivity] Error details:', activityError.details)
       console.error('[createActivity] Error hint:', activityError.hint)
+      console.error('[createActivity] User ID attempting insert:', user.id)
+      console.error('[createActivity] User email:', user.email)
+      console.error('[createActivity] =============================================')
+
+      // Check if it's an RLS error
+      if (activityError.code === '42501' || activityError.message.includes('policy')) {
+        return {
+          success: false,
+          message: 'Permission denied by Row Level Security. Please ensure you have the correct role permissions.',
+        }
+      }
+
       return {
         success: false,
         message: `Database error: ${activityError.message}`,
