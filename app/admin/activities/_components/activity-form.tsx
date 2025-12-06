@@ -283,6 +283,16 @@ export function ActivityForm({ initialData }: ActivityFormProps) {
     <Form {...form}>
       <form
         onSubmit={(e) => {
+          // IMPORTANT: Only allow form submission when on the last tab (SEO)
+          // This prevents accidental submission when pressing Enter in input fields
+          if (currentTab !== 'seo') {
+            console.log('🟡 FORM SUBMIT BLOCKED - Not on SEO tab, current tab:', currentTab)
+            e.preventDefault()
+            // Instead of submitting, move to the next tab
+            handleNext()
+            return
+          }
+
           console.log('🟡 FORM ONSUBMIT EVENT FIRED!')
           console.log('🟡 Event:', e)
           form.handleSubmit(onSubmit)(e)
