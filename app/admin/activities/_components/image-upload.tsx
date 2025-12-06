@@ -172,30 +172,41 @@ export function ImageUpload({ value, onChange, bucket, folder }: ImageUploadProp
 
     try {
       setIsUploading(true)
-      await deleteFile(value, bucket)
+
+      // Try to delete from storage
+      const deleted = await deleteFile(value, bucket)
+
+      // Always clear the value, even if storage delete fails
+      // The deleteFile function now handles invalid URLs gracefully
       onChange('')
-      toast.success('Image removed successfully')
+
+      if (deleted) {
+        toast.success('Image removed successfully')
+      } else {
+        // Delete returned false but didn't throw - URL was cleared
+        toast.success('Image removed')
+      }
     } catch (error) {
       console.error('[ImageUpload] Remove error:', error)
 
+      // Even if delete fails, clear the URL value
+      // This allows users to remove invalid/broken image references
+      onChange('')
+
       // Extract meaningful error message
-      let errorMessage = 'Failed to remove image'
+      let errorMessage = 'Image reference cleared'
 
       if (error instanceof Error) {
         if (error.message.includes('new row violates row-level security policy')) {
-          errorMessage = 'Permission denied: You do not have access to delete images'
-        } else if (error.message.includes('Object not found')) {
-          errorMessage = 'Image not found in storage'
-          // Clear the value anyway since it doesn't exist
-          onChange('')
+          errorMessage = 'Permission denied, but image reference was cleared'
+        } else if (error.message.includes('Object not found') || error.message.includes('not found')) {
+          errorMessage = 'Image removed (was not found in storage)'
         } else {
-          errorMessage = `Delete failed: ${error.message}`
+          errorMessage = 'Image reference cleared (storage delete failed)'
         }
       }
 
-      toast.error(errorMessage, {
-        duration: 5000,
-      })
+      toast.success(errorMessage)
     } finally {
       setIsUploading(false)
     }

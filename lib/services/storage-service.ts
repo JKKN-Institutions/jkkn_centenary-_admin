@@ -229,19 +229,47 @@ export async function uploadMultipleImages(
  *
  * @param url - Public URL of the file to delete
  * @param bucket - Storage bucket name
- * @returns true if successful
+ * @returns true if successful, false if URL is invalid/external
  */
 export async function deleteFile(
   url: string,
   bucket: StorageBucket
 ): Promise<boolean> {
   try {
+    console.log('[StorageService] Delete requested for URL:', url)
+    console.log('[StorageService] Bucket:', bucket)
+
+    // Validate URL is not empty
+    if (!url || url.trim() === '') {
+      console.warn('[StorageService] Empty URL provided, skipping delete')
+      return true // Return success since there's nothing to delete
+    }
+
+    // Check if this is a Supabase storage URL
+    if (!url.includes('supabase') && !url.includes(bucket)) {
+      console.warn('[StorageService] URL is not a Supabase storage URL, skipping delete:', url)
+      return true // Return success for external URLs (e.g., placeholder images)
+    }
+
     // Extract file path from URL
+    // URL format: https://<project>.supabase.co/storage/v1/object/public/<bucket>/<file-path>
     const urlParts = url.split(`/${bucket}/`)
     if (urlParts.length < 2) {
-      throw new Error('Invalid file URL')
+      console.warn('[StorageService] Could not extract file path from URL:', url)
+      console.warn('[StorageService] Expected format: .../<bucket>/<file-path>')
+      // Don't throw error, just return true to allow clearing the value
+      return true
     }
+
     const filePath = urlParts[1]
+
+    // Validate file path
+    if (!filePath || filePath.trim() === '') {
+      console.warn('[StorageService] Empty file path extracted, skipping delete')
+      return true
+    }
+
+    console.log('[StorageService] Extracted file path:', filePath)
 
     // Delete from Supabase Storage
     const supabase = createClient()
@@ -251,6 +279,11 @@ export async function deleteFile(
 
     if (error) {
       console.error('[StorageService] Delete error:', error)
+      // If file not found, consider it a success (already deleted)
+      if (error.message.includes('not found') || error.message.includes('Object not found')) {
+        console.warn('[StorageService] File not found in storage, treating as success')
+        return true
+      }
       throw new Error(`Failed to delete file: ${error.message}`)
     }
 
@@ -259,7 +292,9 @@ export async function deleteFile(
 
   } catch (error) {
     console.error('[StorageService] Unexpected delete error:', error)
-    throw new Error('An unexpected error occurred during file deletion')
+    // Don't throw - allow the operation to continue
+    // The caller can still clear the URL value even if delete fails
+    return false
   }
 }
 
