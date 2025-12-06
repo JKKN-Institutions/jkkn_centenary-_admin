@@ -213,7 +213,37 @@ export async function createActivity(
       assigned_to: finalData.assigned_to,
     })
 
-    console.log('[createActivity] Step 5: Inserting main activity record...')
+    console.log('[createActivity] Step 5: Checking slug uniqueness...')
+
+    // Check if slug already exists
+    const { data: existingActivity, error: slugCheckError } = await supabase
+      .from('activities')
+      .select('id, title, slug')
+      .eq('slug', finalData.slug)
+      .maybeSingle()
+
+    if (slugCheckError) {
+      console.error('[createActivity] Error checking slug:', slugCheckError)
+    }
+
+    if (existingActivity) {
+      console.error('[createActivity] Slug already exists!', {
+        existingId: existingActivity.id,
+        existingTitle: existingActivity.title,
+        slug: finalData.slug,
+      })
+      return {
+        success: false,
+        message: `An activity with the slug "${finalData.slug}" already exists (Title: "${existingActivity.title}"). Please use a different title or modify the slug.`,
+        errors: {
+          slug: [`Slug "${finalData.slug}" is already in use`],
+        },
+      }
+    }
+
+    console.log('[createActivity] Slug is unique, proceeding...')
+
+    console.log('[createActivity] Step 6: Inserting main activity record...')
     console.log('[createActivity] Activity data to insert:', {
       title: finalData.title,
       slug: finalData.slug,
@@ -241,7 +271,7 @@ export async function createActivity(
     }
 
     // Insert main activity
-    console.log('[createActivity] Proceeding with INSERT...')
+    console.log('[createActivity] Step 7: Proceeding with INSERT...')
     const { data: activity, error: activityError } = await supabase
       .from('activities')
       .insert([
@@ -252,7 +282,7 @@ export async function createActivity(
           category: finalData.category,
           description: finalData.description,
           vision_text: finalData.vision_text || null,
-          hero_image_url: finalData.hero_image_url || 'https://via.placeholder.com/1200x675?text=No+Image',
+          hero_image_url: finalData.hero_image_url || '',
           progress: finalData.progress,
           impact: finalData.impact || null,
           activity_date: finalData.activity_date || null,
@@ -281,6 +311,18 @@ export async function createActivity(
       console.error('[createActivity] User email:', user.email)
       console.error('[createActivity] =============================================')
 
+      // Check if it's a duplicate key error
+      if (activityError.code === '23505' || activityError.message.includes('duplicate key') || activityError.message.includes('unique constraint')) {
+        console.error('[createActivity] DUPLICATE KEY ERROR - slug already exists!')
+        return {
+          success: false,
+          message: `An activity with this slug already exists. Please use a different title or modify the slug.`,
+          errors: {
+            slug: ['This slug is already in use by another activity'],
+          },
+        }
+      }
+
       // Check if it's an RLS error
       if (activityError.code === '42501' || activityError.message.includes('policy')) {
         return {
@@ -299,7 +341,7 @@ export async function createActivity(
 
     // Insert nested data
     const activityId = activity.id
-    console.log('[createActivity] Step 6: Inserting nested data...')
+    console.log('[createActivity] Step 8: Inserting nested data...')
 
     // Insert metrics
     if (validatedData.metrics.length > 0) {
@@ -377,7 +419,7 @@ export async function createActivity(
       }
     }
 
-    console.log('[createActivity] Step 7: Revalidating cache...')
+    console.log('[createActivity] Step 9: Revalidating cache...')
     // Instant cache invalidation
     revalidateTag('activities')
     revalidateTag('activities-list')
