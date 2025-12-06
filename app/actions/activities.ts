@@ -539,7 +539,7 @@ export async function updateActivity(
       .eq('id', user.id)
       .single()
 
-    // Fetch the existing activity to check permissions
+    // Fetch the existing activity
     const { data: existingActivity, error: fetchError } = await supabase
       .from('activities')
       .select('id, assigned_to, institution_id, department_id')
@@ -554,20 +554,18 @@ export async function updateActivity(
       }
     }
 
-    // Validate user can update this activity
-    const canUpdate =
-      // User is assigned to this activity
-      existingActivity.assigned_to === user.id ||
-      // Super admin can update any activity
-      profile?.role_type === 'super_admin' ||
-      // Regular admin can update activities from their institution
-      (existingActivity.institution_id === profile?.institution_id || existingActivity.institution_id === null)
+    // Check if user has update permission using RPC function
+    // Anyone with activities.update permission can edit ANY activity
+    const { data: hasUpdatePermission } = await supabase.rpc('check_activity_permission', {
+      user_id: user.id,
+      permission_name: 'update'
+    })
 
-    if (!canUpdate) {
-      console.error('[updateActivity] User not authorized to update this activity')
+    if (!hasUpdatePermission) {
+      console.error('[updateActivity] User not authorized to update activities')
       return {
         success: false,
-        message: 'You do not have permission to update this activity',
+        message: 'You do not have permission to update activities',
       }
     }
 
@@ -716,10 +714,10 @@ export async function deleteActivity(activityId: string): Promise<FormState> {
 
     const supabase = await createClient()
 
-    // Fetch existing activity to check permissions
+    // Fetch existing activity
     const { data: existingActivity, error: fetchError } = await supabase
       .from('activities')
-      .select('id, title, institution_id, assigned_to')
+      .select('id, title')
       .eq('id', activityId)
       .single()
 
@@ -731,34 +729,18 @@ export async function deleteActivity(activityId: string): Promise<FormState> {
       }
     }
 
-    // Fetch user profile to check permissions
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('id, role_type, institution_id')
-      .eq('id', user.id)
-      .single()
+    // Check if user has delete permission using RPC function
+    // Anyone with activities.delete permission can delete ANY activity
+    const { data: hasDeletePermission } = await supabase.rpc('check_activity_permission', {
+      user_id: user.id,
+      permission_name: 'delete'
+    })
 
-    if (!profile) {
-      return {
-        success: false,
-        message: 'User profile not found',
-      }
-    }
-
-    // Check if user can delete this activity
-    const canDelete =
-      // User is assigned to this activity
-      existingActivity.assigned_to === user.id ||
-      // Super admin can delete any activity
-      profile.role_type === 'super_admin' ||
-      // Regular admin can delete activities from their institution
-      (existingActivity.institution_id === profile.institution_id || existingActivity.institution_id === null)
-
-    if (!canDelete) {
+    if (!hasDeletePermission) {
       console.error('[deleteActivity] Permission denied for user:', user.id)
       return {
         success: false,
-        message: 'You do not have permission to delete this activity',
+        message: 'You do not have permission to delete activities',
       }
     }
 
@@ -994,10 +976,10 @@ export async function addGalleryImages(
     const user = await getCurrentUser()
     const supabase = await createClient()
 
-    // Verify user has permission to update this activity
+    // Verify activity exists
     const { data: activity, error: fetchError } = await supabase
       .from('activities')
-      .select('id, institution_id, assigned_to')
+      .select('id')
       .eq('id', activityId)
       .single()
 
@@ -1009,24 +991,18 @@ export async function addGalleryImages(
       }
     }
 
-    // Get user's profile to check permissions
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('role_type, institution_id')
-      .eq('id', user.id)
-      .single()
+    // Check if user has update permission using RPC function
+    // Anyone with activities.update permission can add images to ANY activity
+    const { data: hasUpdatePermission } = await supabase.rpc('check_activity_permission', {
+      user_id: user.id,
+      permission_name: 'update'
+    })
 
-    // Check if user can update this activity
-    const canUpdate =
-      activity.assigned_to === user.id ||
-      profile?.role_type === 'super_admin' ||
-      (activity.institution_id === profile?.institution_id || activity.institution_id === null)
-
-    if (!canUpdate) {
+    if (!hasUpdatePermission) {
       console.error('[addGalleryImages] Permission denied for user:', user.id)
       return {
         success: false,
-        message: 'You do not have permission to add images to this activity',
+        message: 'You do not have permission to add images to activities',
       }
     }
 
@@ -1118,10 +1094,10 @@ export async function deleteGalleryImage(
     const user = await getCurrentUser()
     const supabase = await createClient()
 
-    // Verify user has permission to update this activity
+    // Verify activity exists
     const { data: activity, error: fetchError } = await supabase
       .from('activities')
-      .select('id, institution_id, assigned_to')
+      .select('id')
       .eq('id', activityId)
       .single()
 
@@ -1133,24 +1109,18 @@ export async function deleteGalleryImage(
       }
     }
 
-    // Get user's profile to check permissions
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('role_type, institution_id')
-      .eq('id', user.id)
-      .single()
+    // Check if user has update permission using RPC function
+    // Anyone with activities.update permission can delete images from ANY activity
+    const { data: hasUpdatePermission } = await supabase.rpc('check_activity_permission', {
+      user_id: user.id,
+      permission_name: 'update'
+    })
 
-    // Check if user can update this activity
-    const canUpdate =
-      activity.assigned_to === user.id ||
-      profile?.role_type === 'super_admin' ||
-      (activity.institution_id === profile?.institution_id || activity.institution_id === null)
-
-    if (!canUpdate) {
+    if (!hasUpdatePermission) {
       console.error('[deleteGalleryImage] Permission denied for user:', user.id)
       return {
         success: false,
-        message: 'You do not have permission to delete images from this activity',
+        message: 'You do not have permission to delete images from activities',
       }
     }
 

@@ -38,21 +38,13 @@ export default function ActivityDetailPage({
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Check if user can edit this specific activity
+  // Anyone with activities.update permission can edit ANY activity (Super Admin, Activities Coordinator, etc.)
   const hasUpdatePermission = hasPermission('activities', 'update');
-  const canUpdate = activity && profile ? (
-    // User is assigned to this activity - can always edit
-    activity.assigned_to === profile.id ||
-    // Super admin with update permission can edit any activity
-    (profile.role_type === 'super_admin' && hasUpdatePermission) ||
-    // Regular admin with update permission can edit activities from their institution
-    (hasUpdatePermission && (activity.institution_id === profile.institution_id || activity.institution_id === null))
-  ) : false;
+  const canUpdate = hasUpdatePermission;
 
-  // Delete permission remains admin-only (no assignment override)
-  const canDelete = hasPermission('activities', 'delete') && (
-    profile?.role_type === 'super_admin' ||
-    (activity && (activity.institution_id === profile?.institution_id || activity.institution_id === null))
-  );
+  // Delete permission - anyone with activities.delete permission can delete any activity
+  const hasDeletePermission = hasPermission('activities', 'delete');
+  const canDelete = hasDeletePermission;
 
   useEffect(() => {
     if (!permissionsLoading && !hasPermission('activities', 'view')) {

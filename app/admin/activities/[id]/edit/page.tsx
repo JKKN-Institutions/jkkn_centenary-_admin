@@ -31,18 +31,9 @@ export default function EditActivityPage({
   const { activity, loading, error } = useActivity(id);
 
   // Check if user can edit this specific activity
+  // Anyone with activities.update permission can edit ANY activity (Super Admin, Activities Coordinator, etc.)
   const hasUpdatePermission = hasPermission('activities', 'update');
-  const canUpdate =
-    activity && profile
-      ? // User is assigned to this activity - can always edit
-        activity.assigned_to === profile.id ||
-        // Super admin with update permission can edit any activity
-        (profile.role_type === 'super_admin' && hasUpdatePermission) ||
-        // Regular admin with update permission can edit activities from their institution
-        (hasUpdatePermission &&
-          (activity.institution_id === profile.institution_id ||
-            activity.institution_id === null))
-      : false;
+  const canUpdate = hasUpdatePermission;
 
   useEffect(() => {
     if (!permissionsLoading && !loading && !canUpdate) {
