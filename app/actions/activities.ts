@@ -974,3 +974,232 @@ export async function togglePublishStatus(
     }
   }
 }
+
+/**
+ * Add gallery images to an existing activity
+ *
+ * @param activityId - Activity UUID
+ * @param images - Array of image data (image_url, caption, alt_text)
+ * @returns Form state with success/error
+ */
+export async function addGalleryImages(
+  activityId: string,
+  images: { image_url: string; caption?: string; alt_text?: string }[]
+): Promise<FormState> {
+  try {
+    console.log('[addGalleryImages] Adding images to activity:', activityId)
+    console.log('[addGalleryImages] Number of images:', images.length)
+
+    // Get authenticated user
+    const user = await getCurrentUser()
+    const supabase = await createClient()
+
+    // Verify user has permission to update this activity
+    const { data: activity, error: fetchError } = await supabase
+      .from('activities')
+      .select('id, institution_id, assigned_to')
+      .eq('id', activityId)
+      .single()
+
+    if (fetchError || !activity) {
+      console.error('[addGalleryImages] Activity not found:', fetchError)
+      return {
+        success: false,
+        message: 'Activity not found',
+      }
+    }
+
+    // Get user's profile to check permissions
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('role_type, institution_id')
+      .eq('id', user.id)
+      .single()
+
+    // Check if user can update this activity
+    const canUpdate =
+      activity.assigned_to === user.id ||
+      profile?.role_type === 'super_admin' ||
+      (activity.institution_id === profile?.institution_id || activity.institution_id === null)
+
+    if (!canUpdate) {
+      console.error('[addGalleryImages] Permission denied for user:', user.id)
+      return {
+        success: false,
+        message: 'You do not have permission to add images to this activity',
+      }
+    }
+
+    // Get current max display_order for gallery
+    const { data: existingImages } = await supabase
+      .from('activity_gallery')
+      .select('display_order')
+      .eq('activity_id', activityId)
+      .order('display_order', { ascending: false })
+      .limit(1)
+
+    const startingOrder = existingImages && existingImages.length > 0
+      ? existingImages[0].display_order + 1
+      : 0
+
+    // Insert new gallery images
+    const galleryData = images.map((image, index) => ({
+      activity_id: activityId,
+      image_url: image.image_url,
+      caption: image.caption || null,
+      alt_text: image.alt_text || null,
+      display_order: startingOrder + index,
+    }))
+
+    const { data: insertedImages, error: insertError } = await supabase
+      .from('activity_gallery')
+      .insert(galleryData)
+      .select()
+
+    if (insertError) {
+      console.error('[addGalleryImages] Insert error:', insertError)
+      return {
+        success: false,
+        message: `Failed to add images: ${insertError.message}`,
+      }
+    }
+
+    // Update activity's updated_by timestamp
+    await supabase
+      .from('activities')
+      .update({ updated_by: user.id })
+      .eq('id', activityId)
+
+    // Instant cache invalidation
+    revalidateTag('activities')
+    revalidateTag(`activity-${activityId}`)
+    revalidatePath('/admin/activities')
+    revalidatePath(`/admin/activities/${activityId}`)
+
+    console.log('[addGalleryImages] Successfully added', insertedImages?.length, 'images')
+
+    return {
+      success: true,
+      message: `Successfully added ${images.length} image(s) to gallery`,
+      data: insertedImages,
+    }
+  } catch (error) {
+    console.error('[addGalleryImages] Unexpected error:', error)
+
+    if (error instanceof Error) {
+      return {
+        success: false,
+        message: error.message,
+      }
+    }
+
+    return {
+      success: false,
+      message: 'An unexpected error occurred. Please try again.',
+    }
+  }
+}
+
+/**
+ * Delete a gallery image from an activity
+ *
+ * @param activityId - Activity UUID
+ * @param imageId - Gallery image UUID
+ * @returns Form state with success/error
+ */
+export async function deleteGalleryImage(
+  activityId: string,
+  imageId: string
+): Promise<FormState> {
+  try {
+    console.log('[deleteGalleryImage] Deleting image:', imageId, 'from activity:', activityId)
+
+    // Get authenticated user
+    const user = await getCurrentUser()
+    const supabase = await createClient()
+
+    // Verify user has permission to update this activity
+    const { data: activity, error: fetchError } = await supabase
+      .from('activities')
+      .select('id, institution_id, assigned_to')
+      .eq('id', activityId)
+      .single()
+
+    if (fetchError || !activity) {
+      console.error('[deleteGalleryImage] Activity not found:', fetchError)
+      return {
+        success: false,
+        message: 'Activity not found',
+      }
+    }
+
+    // Get user's profile to check permissions
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('role_type, institution_id')
+      .eq('id', user.id)
+      .single()
+
+    // Check if user can update this activity
+    const canUpdate =
+      activity.assigned_to === user.id ||
+      profile?.role_type === 'super_admin' ||
+      (activity.institution_id === profile?.institution_id || activity.institution_id === null)
+
+    if (!canUpdate) {
+      console.error('[deleteGalleryImage] Permission denied for user:', user.id)
+      return {
+        success: false,
+        message: 'You do not have permission to delete images from this activity',
+      }
+    }
+
+    // Delete the gallery image
+    const { error: deleteError } = await supabase
+      .from('activity_gallery')
+      .delete()
+      .eq('id', imageId)
+      .eq('activity_id', activityId)
+
+    if (deleteError) {
+      console.error('[deleteGalleryImage] Delete error:', deleteError)
+      return {
+        success: false,
+        message: `Failed to delete image: ${deleteError.message}`,
+      }
+    }
+
+    // Update activity's updated_by timestamp
+    await supabase
+      .from('activities')
+      .update({ updated_by: user.id })
+      .eq('id', activityId)
+
+    // Instant cache invalidation
+    revalidateTag('activities')
+    revalidateTag(`activity-${activityId}`)
+    revalidatePath('/admin/activities')
+    revalidatePath(`/admin/activities/${activityId}`)
+
+    console.log('[deleteGalleryImage] Successfully deleted image')
+
+    return {
+      success: true,
+      message: 'Image deleted successfully',
+    }
+  } catch (error) {
+    console.error('[deleteGalleryImage] Unexpected error:', error)
+
+    if (error instanceof Error) {
+      return {
+        success: false,
+        message: error.message,
+      }
+    }
+
+    return {
+      success: false,
+      message: 'An unexpected error occurred. Please try again.',
+    }
+  }
+}

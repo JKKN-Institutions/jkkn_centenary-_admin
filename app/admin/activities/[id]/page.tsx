@@ -5,10 +5,10 @@
 
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { use } from 'react';
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, Edit, Trash2, Eye, EyeOff } from 'lucide-react';
+import { ArrowLeft, Edit, Trash2, Eye, EyeOff, Plus, Loader2, X } from 'lucide-react';
 import { useActivity } from '@/hooks/content/use-activities';
 import { usePermissions } from '@/lib/permissions';
 import { Button } from '@/components/ui/button';
@@ -16,7 +16,9 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { toast } from 'sonner';
-import { deleteActivity, togglePublishStatus } from '@/app/actions/activities';
+import { deleteActivity, togglePublishStatus, addGalleryImages, deleteGalleryImage } from '@/app/actions/activities';
+import { uploadImage, deleteFile } from '@/lib/services/storage-service';
+import { compressImage } from '@/lib/services/image-compression';
 import Image from 'next/image';
 
 export default function ActivityDetailPage({
@@ -28,6 +30,12 @@ export default function ActivityDetailPage({
   const router = useRouter();
   const { hasPermission, profile, loading: permissionsLoading } = usePermissions();
   const { activity, loading, error, refetch } = useActivity(id);
+
+  // Gallery upload state
+  const [isUploading, setIsUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState<string>('');
+  const [deletingImageId, setDeletingImageId] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Check if user can edit this specific activity
   const hasUpdatePermission = hasPermission('activities', 'update');
@@ -81,6 +89,110 @@ export default function ActivityDetailPage({
       refetch();
     } else {
       toast.error(result.message || 'Failed to update publish status');
+    }
+  };
+
+  // Handle gallery image upload
+  const handleGalleryUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []);
+    if (files.length === 0) return;
+
+    // Validate file types
+    const invalidFiles = files.filter((file) => !file.type.startsWith('image/'));
+    if (invalidFiles.length > 0) {
+      toast.error('All files must be images');
+      return;
+    }
+
+    // Validate file sizes (max 10MB each)
+    const oversizedFiles = files.filter((file) => file.size > 10 * 1024 * 1024);
+    if (oversizedFiles.length > 0) {
+      toast.error('Each image must be less than 10MB');
+      return;
+    }
+
+    setIsUploading(true);
+    const uploadedImages: { image_url: string; caption?: string; alt_text?: string }[] = [];
+
+    try {
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        setUploadProgress(`Uploading ${i + 1} of ${files.length}...`);
+
+        // Compress image before upload
+        const compressedFile = await compressImage(file, {
+          maxWidth: 1920,
+          maxHeight: 1080,
+          quality: 0.7,
+          maxSizeMB: 2,
+          timeoutMs: 15000,
+        });
+
+        // Upload to storage
+        const url = await uploadImage(compressedFile, 'activity-images', 'gallery');
+        uploadedImages.push({ image_url: url });
+      }
+
+      // Add images to database
+      const result = await addGalleryImages(id, uploadedImages);
+
+      if (result.success) {
+        toast.success(`Successfully added ${uploadedImages.length} image(s)`);
+        refetch();
+      } else {
+        toast.error(result.message || 'Failed to add images');
+        // Clean up uploaded files if database insert failed
+        for (const image of uploadedImages) {
+          try {
+            await deleteFile(image.image_url, 'activity-images');
+          } catch (cleanupError) {
+            console.error('Failed to clean up uploaded image:', cleanupError);
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Gallery upload error:', error);
+      toast.error(error instanceof Error ? error.message : 'Failed to upload images');
+    } finally {
+      setIsUploading(false);
+      setUploadProgress('');
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+    }
+  };
+
+  // Handle gallery image delete
+  const handleDeleteImage = async (imageId: string, imageUrl: string) => {
+    if (!confirm('Are you sure you want to delete this image?')) {
+      return;
+    }
+
+    setDeletingImageId(imageId);
+
+    try {
+      // Delete from database first
+      const result = await deleteGalleryImage(id, imageId);
+
+      if (result.success) {
+        // Then delete from storage
+        try {
+          await deleteFile(imageUrl, 'activity-images');
+        } catch (storageError) {
+          console.error('Failed to delete image from storage:', storageError);
+          // Don't fail the operation if storage delete fails
+        }
+
+        toast.success('Image deleted successfully');
+        refetch();
+      } else {
+        toast.error(result.message || 'Failed to delete image');
+      }
+    } catch (error) {
+      console.error('Delete image error:', error);
+      toast.error('Failed to delete image');
+    } finally {
+      setDeletingImageId(null);
     }
   };
 
@@ -249,16 +361,47 @@ export default function ActivityDetailPage({
       )}
 
       {/* Gallery */}
-      {activity.gallery && activity.gallery.length > 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Gallery</CardTitle>
-          </CardHeader>
-          <CardContent>
+      <Card>
+        <CardHeader className='flex flex-row items-center justify-between'>
+          <CardTitle>Gallery</CardTitle>
+          {canUpdate && (
+            <div className='flex items-center gap-2'>
+              <input
+                ref={fileInputRef}
+                type='file'
+                accept='image/*'
+                multiple
+                className='hidden'
+                onChange={handleGalleryUpload}
+                disabled={isUploading}
+              />
+              <Button
+                variant='outline'
+                size='sm'
+                onClick={() => fileInputRef.current?.click()}
+                disabled={isUploading}
+              >
+                {isUploading ? (
+                  <>
+                    <Loader2 className='h-4 w-4 mr-2 animate-spin' />
+                    {uploadProgress || 'Uploading...'}
+                  </>
+                ) : (
+                  <>
+                    <Plus className='h-4 w-4 mr-2' />
+                    Add Images
+                  </>
+                )}
+              </Button>
+            </div>
+          )}
+        </CardHeader>
+        <CardContent>
+          {activity.gallery && activity.gallery.length > 0 ? (
             <div className='grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4'>
               {activity.gallery.map((image) => (
-                <div key={image.id} className='space-y-2'>
-                  <div className='aspect-video bg-muted rounded overflow-hidden'>
+                <div key={image.id} className='space-y-2 group relative'>
+                  <div className='aspect-video bg-muted rounded overflow-hidden relative'>
                     <Image
                       src={image.image_url}
                       alt={image.alt_text || image.caption || 'Gallery image'}
@@ -266,6 +409,22 @@ export default function ActivityDetailPage({
                       width={300}
                       height={300}
                     />
+                    {/* Delete button overlay */}
+                    {canUpdate && (
+                      <Button
+                        variant='destructive'
+                        size='icon'
+                        className='absolute top-2 right-2 h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity'
+                        onClick={() => handleDeleteImage(image.id, image.image_url)}
+                        disabled={deletingImageId === image.id}
+                      >
+                        {deletingImageId === image.id ? (
+                          <Loader2 className='h-4 w-4 animate-spin' />
+                        ) : (
+                          <X className='h-4 w-4' />
+                        )}
+                      </Button>
+                    )}
                   </div>
                   {image.caption && (
                     <p className='text-sm text-muted-foreground'>
@@ -275,9 +434,16 @@ export default function ActivityDetailPage({
                 </div>
               ))}
             </div>
-          </CardContent>
-        </Card>
-      )}
+          ) : (
+            <div className='text-center py-8 text-muted-foreground'>
+              <p className='text-sm'>No gallery images yet</p>
+              {canUpdate && (
+                <p className='text-xs mt-1'>Click "Add Images" to upload photos</p>
+              )}
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       {/* Testimonials */}
       {activity.testimonials && activity.testimonials.length > 0 && (
