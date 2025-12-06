@@ -184,12 +184,13 @@ export async function createActivity(
     const supabase = await createClient()
     const { data: profile } = await supabase
       .from('profiles')
-      .select('role_type, institution_id, department_id')
+      .select('role_type, role_id, institution_id, department_id')
       .eq('id', user.id)
       .single()
 
     console.log('[createActivity] User profile:', {
       role_type: profile?.role_type,
+      role_id: profile?.role_id,
       institution_id: profile?.institution_id,
       department_id: profile?.department_id,
     })

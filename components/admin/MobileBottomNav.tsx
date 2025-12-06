@@ -234,14 +234,14 @@ export function MobileBottomNav({ onMenuClick }: MobileBottomNavProps) {
 
   // Determine active module from pathname
   const getActiveModule = () => {
-    for (const module of adminModules) {
-      if (module.href && pathname?.startsWith(module.href)) {
-        return module.id
+    for (const navModule of adminModules) {
+      if (navModule.href && pathname?.startsWith(navModule.href)) {
+        return navModule.id
       }
-      if (module.subModules) {
-        for (const sub of module.subModules) {
+      if (navModule.subModules) {
+        for (const sub of navModule.subModules) {
           if (pathname?.startsWith(sub.href)) {
-            return module.id
+            return navModule.id
           }
         }
       }
@@ -281,12 +281,12 @@ export function MobileBottomNav({ onMenuClick }: MobileBottomNavProps) {
     }
   }, [isSheetOpen, isFabOpen])
 
-  const handleModuleClick = useCallback((module: ParentModule) => {
-    if (module.subModules && module.subModules.length > 0) {
-      setSheetModuleId((prev) => (prev === module.id ? null : module.id))
+  const handleModuleClick = useCallback((navModule: ParentModule) => {
+    if (navModule.subModules && navModule.subModules.length > 0) {
+      setSheetModuleId((prev) => (prev === navModule.id ? null : navModule.id))
       setIsFabOpen(false)
-    } else if (module.href) {
-      router.push(module.href)
+    } else if (navModule.href) {
+      router.push(navModule.href)
       setSheetModuleId(null)
     }
   }, [router])
@@ -524,16 +524,16 @@ export function MobileBottomNav({ onMenuClick }: MobileBottomNavProps) {
         <div className="px-1 py-1.5 pb-safe">
           <div className="flex items-center justify-around">
             {/* Navigation Items (Left) */}
-            {adminModules.slice(0, 2).map((module) => {
-              const Icon = module.icon
-              const isActive = activeModuleId === module.id
-              const isExpanded = sheetModuleId === module.id
-              const hasSubModules = module.subModules && module.subModules.length > 0
+            {adminModules.slice(0, 2).map((navModule) => {
+              const Icon = navModule.icon
+              const isActive = activeModuleId === navModule.id
+              const isExpanded = sheetModuleId === navModule.id
+              const hasSubModules = navModule.subModules && navModule.subModules.length > 0
 
               return (
                 <button
-                  key={module.id}
-                  onClick={() => handleModuleClick(module)}
+                  key={navModule.id}
+                  onClick={() => handleModuleClick(navModule)}
                   className="relative flex flex-col items-center justify-center min-w-[50px] py-1 px-1.5"
                   style={{ WebkitTapHighlightColor: 'transparent' }}
                   aria-current={isActive && !hasSubModules ? 'page' : undefined}
@@ -560,9 +560,9 @@ export function MobileBottomNav({ onMenuClick }: MobileBottomNavProps) {
                       }`}
                       strokeWidth={isActive || isExpanded ? 2.5 : 2}
                     />
-                    {module.badge !== undefined && module.badge > 0 && (
+                    {navModule.badge !== undefined && navModule.badge > 0 && (
                       <span className="absolute -top-1 -right-1.5 w-4 h-4 bg-red-500 text-white text-[9px] font-bold rounded-full flex items-center justify-center">
-                        {module.badge > 9 ? '9+' : module.badge}
+                        {navModule.badge > 9 ? '9+' : navModule.badge}
                       </span>
                     )}
                   </div>
@@ -571,12 +571,12 @@ export function MobileBottomNav({ onMenuClick }: MobileBottomNavProps) {
                       isActive || isExpanded ? 'text-white' : 'text-white/60'
                     }`}
                   >
-                    {module.label}
+                    {navModule.label}
                   </span>
                   {/* Submodule indicator */}
                   {hasSubModules && (
                     <div className="flex gap-0.5 mt-0.5">
-                      {[...Array(Math.min(3, module.subModules!.length))].map((_, i) => (
+                      {[...Array(Math.min(3, navModule.subModules!.length))].map((_, i) => (
                         <div key={i} className="w-0.5 h-0.5 rounded-full bg-white/40" />
                       ))}
                     </div>
@@ -635,16 +635,16 @@ export function MobileBottomNav({ onMenuClick }: MobileBottomNavProps) {
             </motion.button>
 
             {/* Navigation Items (Right) */}
-            {adminModules.slice(2, 4).map((module) => {
-              const Icon = module.icon
-              const isActive = activeModuleId === module.id
-              const isExpanded = sheetModuleId === module.id
-              const hasSubModules = module.subModules && module.subModules.length > 0
+            {adminModules.slice(2, 4).map((navModule) => {
+              const Icon = navModule.icon
+              const isActive = activeModuleId === navModule.id
+              const isExpanded = sheetModuleId === navModule.id
+              const hasSubModules = navModule.subModules && navModule.subModules.length > 0
 
               return (
                 <button
-                  key={module.id}
-                  onClick={() => handleModuleClick(module)}
+                  key={navModule.id}
+                  onClick={() => handleModuleClick(navModule)}
                   className="relative flex flex-col items-center justify-center min-w-[50px] py-1 px-1.5"
                   style={{ WebkitTapHighlightColor: 'transparent' }}
                   aria-current={isActive && !hasSubModules ? 'page' : undefined}
@@ -670,9 +670,9 @@ export function MobileBottomNav({ onMenuClick }: MobileBottomNavProps) {
                       }`}
                       strokeWidth={isActive || isExpanded ? 2.5 : 2}
                     />
-                    {module.badge !== undefined && module.badge > 0 && (
+                    {navModule.badge !== undefined && navModule.badge > 0 && (
                       <span className="absolute -top-1 -right-1.5 w-4 h-4 bg-red-500 text-white text-[9px] font-bold rounded-full flex items-center justify-center">
-                        {module.badge > 9 ? '9+' : module.badge}
+                        {navModule.badge > 9 ? '9+' : navModule.badge}
                       </span>
                     )}
                   </div>
@@ -681,11 +681,11 @@ export function MobileBottomNav({ onMenuClick }: MobileBottomNavProps) {
                       isActive || isExpanded ? 'text-white' : 'text-white/60'
                     }`}
                   >
-                    {module.label}
+                    {navModule.label}
                   </span>
                   {hasSubModules && (
                     <div className="flex gap-0.5 mt-0.5">
-                      {[...Array(Math.min(3, module.subModules!.length))].map((_, i) => (
+                      {[...Array(Math.min(3, navModule.subModules!.length))].map((_, i) => (
                         <div key={i} className="w-0.5 h-0.5 rounded-full bg-white/40" />
                       ))}
                     </div>
