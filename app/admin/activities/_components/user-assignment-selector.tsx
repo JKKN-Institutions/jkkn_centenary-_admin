@@ -125,7 +125,10 @@ export function UserAssignmentSelector({
 
       const filters: { institution_id?: string; department_id?: string } = {}
 
-      if (isSuperAdmin && institutionId) {
+      // For super admins, filter by selected institution
+      // For non-super-admins, pass the activity's institution context
+      // so coordinators with null profile institution can still see users
+      if (institutionId) {
         filters.institution_id = institutionId
       }
 

@@ -196,15 +196,18 @@ export async function createActivity(
     })
 
     // Auto-fill institution/department for non-super admins
+    // For non-super-admins: use profile values if available, otherwise keep form-submitted values
+    // This allows coordinators with null institution to still create activities with the form's institution
     const finalData = {
       ...validatedData,
       institution_id: profile?.role_type === 'super_admin'
         ? (validatedData.institution_id || null)
-        : (profile?.institution_id || null),
+        : (profile?.institution_id || validatedData.institution_id || null),
       department_id: profile?.role_type === 'super_admin'
         ? (validatedData.department_id || null)
-        : (profile?.department_id || null),
-      assigned_to: validatedData.assigned_to || null,
+        : (profile?.department_id || validatedData.department_id || null),
+      // Auto-assign creator when no specific user is assigned
+      assigned_to: validatedData.assigned_to || user.id,
     }
 
     console.log('[createActivity] Final data with auto-filled fields:', {
@@ -555,30 +558,37 @@ export async function updateActivity(
     }
 
     // Check if user has update permission using RPC function
-    // Anyone with activities.update permission can edit ANY activity
+    // Allow if: has activities.update permission OR is assigned to this activity
     const { data: hasUpdatePermission } = await supabase.rpc('check_activity_permission', {
       user_id: user.id,
       permission_name: 'update'
     })
 
-    if (!hasUpdatePermission) {
-      console.error('[updateActivity] User not authorized to update activities')
+    const isAssignedToActivity = existingActivity.assigned_to === user.id
+
+    if (!hasUpdatePermission && !isAssignedToActivity) {
+      console.error('[updateActivity] User not authorized to update this activity')
       return {
         success: false,
-        message: 'You do not have permission to update activities',
+        message: 'You do not have permission to update this activity',
       }
     }
 
-    // Auto-fill institution/department for non-super admins
+    // Determine institution/department/assigned_to for the update:
+    // - Super admins: use the form value (they can change institution)
+    // - Non-super admins: preserve the existing activity's institution/department
+    //   to prevent coordinators from accidentally overwriting with their profile values
     const finalData = {
       ...validatedData,
       institution_id: profile?.role_type === 'super_admin'
         ? (validatedData.institution_id || null)
-        : (profile?.institution_id || null),
+        : (existingActivity.institution_id ?? null),
       department_id: profile?.role_type === 'super_admin'
         ? (validatedData.department_id || null)
-        : (profile?.department_id || null),
-      assigned_to: validatedData.assigned_to || null,
+        : (existingActivity.department_id ?? null),
+      assigned_to: profile?.role_type === 'super_admin'
+        ? (validatedData.assigned_to || null)
+        : (existingActivity.assigned_to ?? null),
     }
 
     const { data: activity, error: activityError } = await supabase
@@ -824,13 +834,14 @@ export async function getUsersForAssignment(filters?: {
         query = query.eq('institution_id', filters.institution_id)
       }
     } else {
-      // Regular admins can only see users from their own institution
-      if (profile.institution_id) {
-        query = query.eq('institution_id', profile.institution_id)
-      } else {
-        // If admin has no institution, return empty list
-        return { success: true, data: [] }
+      // Non-super-admin: use their institution, or the filter's institution
+      // (filter institution_id comes from the activity's context when editing)
+      const effectiveInstitution = profile.institution_id || filters?.institution_id
+      if (effectiveInstitution) {
+        query = query.eq('institution_id', effectiveInstitution)
       }
+      // If neither profile nor filter has institution, don't filter by institution
+      // (allows coordinators with null institution to see users)
     }
 
     // Apply department filter if provided

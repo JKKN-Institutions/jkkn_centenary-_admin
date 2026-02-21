@@ -6,7 +6,7 @@
 import { createClient } from '@/lib/supabase/client'
 
 // Allowed file types
-const ALLOWED_IMAGE_TYPES = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp']
+const ALLOWED_IMAGE_TYPES = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'image/gif']
 
 // File size limits (in bytes)
 const MAX_ACTIVITY_IMAGE_SIZE = 10 * 1024 * 1024 // 10MB
