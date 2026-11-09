@@ -41,3 +41,6 @@ next-env.d.ts
 *.avi
 *.mkv
 /public/videos/
+
+# MCP client config can hold access tokens; never commit it
+.mcp.json
